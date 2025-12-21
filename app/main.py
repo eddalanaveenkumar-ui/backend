@@ -1,4 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 
@@ -7,13 +8,22 @@ from .services.youtube_service import YouTubeService
 from .services.viral_engine import ViralEngine
 from .config import settings
 from .constants import NICHES, STATES, LANGUAGES
-from .user_routes import router as user_router # Import the user router
+from .user_routes import router as user_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn")
 
 app = FastAPI(title=settings.PROJECT_NAME, version=settings.PROJECT_VERSION)
+
+# --- CORS Configuration (CRITICAL FOR MOBILE/WEB APPS) ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods (GET, POST, OPTIONS, etc.)
+    allow_headers=["*"],  # Allows all headers
+)
 
 # Include the user router
 app.include_router(user_router, prefix="/api", tags=["User"])
@@ -57,6 +67,11 @@ def shutdown_scheduler():
     scheduler.shutdown()
 
 # --- APIs ---
+
+@app.get("/")
+def read_root():
+    """Health check endpoint."""
+    return {"status": "Triangle Backend is running", "version": settings.PROJECT_VERSION}
 
 @app.get("/admin/trigger-fetch")
 def trigger_fetch_manual(background_tasks: BackgroundTasks):
