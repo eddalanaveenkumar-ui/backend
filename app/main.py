@@ -60,11 +60,15 @@ def comprehensive_fetch_job():
 def start_scheduler():
     # Run every 60 minutes for a comprehensive run
     scheduler.add_job(comprehensive_fetch_job, 'interval', minutes=60, id="comprehensive_fetch")
-    logger.info("Scheduler started. First comprehensive run will be in 60 minutes.")
+    if not scheduler.running:
+        scheduler.start()
+        logger.info("Scheduler started.")
 
 @app.on_event("shutdown")
 def shutdown_scheduler():
-    scheduler.shutdown()
+    if scheduler.running:
+        scheduler.shutdown()
+        logger.info("Scheduler shut down.")
 
 # --- APIs ---
 
