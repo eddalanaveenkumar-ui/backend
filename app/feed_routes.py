@@ -1,13 +1,19 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 import pymongo
 import logging
-from typing import Optional
+from typing import Optional, List
 import traceback
+from pydantic import BaseModel
 
 from .database import videos_collection
 
 logger = logging.getLogger("uvicorn")
 router = APIRouter()
+
+class FeedRequest(BaseModel):
+    state: Optional[str] = None
+    language: Optional[str] = None
+    limit: int = 20
 
 def _format_video(video):
     return {
@@ -22,40 +28,56 @@ def _format_video(video):
         "duration": video.get("duration", "PT0S")
     }
 
-@router.get("/feed")
-def get_feed(state: Optional[str] = None, language: Optional[str] = None, limit: int = 20):
+@router.post("/feed")
+def get_feed(request: FeedRequest):
     """
-    Gets a personalized feed based on state and language.
-    Falls back to global if no personalization is provided or if no results found.
+    Gets a personalized feed with multi-level fallback.
+    1. State + Language
+    2. Language Only
+    3. State Only
+    4. Global Viral
+    5. Most Recent (Failsafe)
     """
     try:
+        state = request.state
+        language = request.language
+        limit = request.limit
+        
         logger.info(f"Feed request: state={state}, language={language}")
         
         videos = []
-        projection = {"_id": 0} # Exclude the ObjectId from the result
+        projection = {"_id": 0} # Exclude ObjectId
         
-        # 1. Try Personalized Query
-        if state or language:
-            query = {}
-            if state: query["state"] = state
-            if language: query["language"] = language
-            
-            logger.info(f"Executing personalized query: {query}")
+        # 1. Try State + Language
+        if state and language:
+            query = {"state": state, "language": language}
+            logger.info(f"Trying State + Language: {query}")
             videos = list(videos_collection.find(query, projection).sort("viral_score", pymongo.DESCENDING).limit(limit))
-            logger.info(f"Found {len(videos)} personalized videos")
+        
+        # 2. Try Language Only
+        if not videos and language:
+            query = {"language": language}
+            logger.info(f"Trying Language Only: {query}")
+            videos = list(videos_collection.find(query, projection).sort("viral_score", pymongo.DESCENDING).limit(limit))
 
-        # 2. Fallback to Global if empty
+        # 3. Try State Only
+        if not videos and state:
+            query = {"state": state}
+            logger.info(f"Trying State Only: {query}")
+            videos = list(videos_collection.find(query, projection).sort("viral_score", pymongo.DESCENDING).limit(limit))
+
+        # 4. Fallback to Global Viral
         if not videos:
-            logger.info("Personalized feed empty or not requested. Falling back to global feed.")
+            logger.info("Falling back to Global Viral")
             videos = list(videos_collection.find({}, projection).sort("viral_score", pymongo.DESCENDING).limit(limit))
-            logger.info(f"Found {len(videos)} global videos by viral_score")
 
-            # 3. Ultimate Fallback: If still no videos (e.g., no viral_score field), sort by date
-            if not videos:
-                logger.info("No videos found with viral_score. Falling back to sorting by published_at.")
-                videos = list(videos_collection.find({}, projection).sort("published_at", pymongo.DESCENDING).limit(limit))
-                logger.info(f"Found {len(videos)} global videos by date")
+        # 5. Ultimate Fallback: Most Recent
+        if not videos:
+            logger.info("Falling back to Most Recent")
+            videos = list(videos_collection.find({}, projection).sort("published_at", pymongo.DESCENDING).limit(limit))
 
+        logger.info(f"Returning {len(videos)} videos")
+        
         # Format for frontend
         formatted_videos = [_format_video(v) for v in videos]
         return formatted_videos
@@ -63,4 +85,5 @@ def get_feed(state: Optional[str] = None, language: Optional[str] = None, limit:
     except Exception as e:
         logger.error(f"Error in get_feed: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        # Return a 200 OK with empty list instead of 500 to prevent app crash
+        return []

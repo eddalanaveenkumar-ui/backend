@@ -1,4 +1,4 @@
-from pymongo import MongoClient, IndexModel, ASCENDING
+from pymongo import MongoClient, IndexModel, ASCENDING, DESCENDING
 from .config import settings
 
 client = MongoClient(settings.MONGO_URI)
@@ -21,6 +21,9 @@ def create_indexes():
     videos_collection.create_index("video_id", unique=True)
     videos_collection.create_index([("state", 1), ("language", 1)])
     videos_collection.create_index("viral_score")
+    videos_collection.create_index([("state", 1)])
+    videos_collection.create_index([("language", 1)])
+    videos_collection.create_index([("published_at", DESCENDING)])
     
     # Channels indexes
     channels_collection.create_index("channel_id", unique=True)
@@ -34,13 +37,13 @@ def create_indexes():
 
     # User Data Indexes
     users_collection.create_index("uid", unique=True)
+    users_collection.create_index("username", unique=True)
     
     # User Activity Indexes - Optimized for Feed Analysis
-    # We need to quickly find all videos a user has liked, paused, or replayed
-    user_activity_collection.create_index([("uid", 1), ("video_id", 1)], unique=True) # One document per user-video pair
+    user_activity_collection.create_index([("uid", 1), ("video_id", 1)], unique=True)
     user_activity_collection.create_index([("uid", 1), ("liked", 1)])
-    user_activity_collection.create_index([("uid", 1), ("replay_count", -1)]) # Find most replayed
-    user_activity_collection.create_index([("uid", 1), ("paused_at", 1)]) # Find where they paused
+    user_activity_collection.create_index([("uid", 1), ("replay_count", -1)])
+    user_activity_collection.create_index([("uid", 1), ("paused_at", 1)])
 
     user_follows_collection.create_index([("uid", 1), ("channel_id", 1)], unique=True)
 
