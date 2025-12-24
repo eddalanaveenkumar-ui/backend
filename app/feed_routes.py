@@ -32,6 +32,7 @@ def get_feed(state: Optional[str] = None, language: Optional[str] = None, limit:
         logger.info(f"Feed request: state={state}, language={language}")
         
         videos = []
+        projection = {"_id": 0} # Exclude the ObjectId from the result
         
         # 1. Try Personalized Query
         if state or language:
@@ -40,19 +41,19 @@ def get_feed(state: Optional[str] = None, language: Optional[str] = None, limit:
             if language: query["language"] = language
             
             logger.info(f"Executing personalized query: {query}")
-            videos = list(videos_collection.find(query).sort("viral_score", pymongo.DESCENDING).limit(limit))
+            videos = list(videos_collection.find(query, projection).sort("viral_score", pymongo.DESCENDING).limit(limit))
             logger.info(f"Found {len(videos)} personalized videos")
 
         # 2. Fallback to Global if empty
         if not videos:
             logger.info("Personalized feed empty or not requested. Falling back to global feed.")
-            videos = list(videos_collection.find({}).sort("viral_score", pymongo.DESCENDING).limit(limit))
+            videos = list(videos_collection.find({}, projection).sort("viral_score", pymongo.DESCENDING).limit(limit))
             logger.info(f"Found {len(videos)} global videos by viral_score")
 
             # 3. Ultimate Fallback: If still no videos (e.g., no viral_score field), sort by date
             if not videos:
                 logger.info("No videos found with viral_score. Falling back to sorting by published_at.")
-                videos = list(videos_collection.find({}).sort("published_at", pymongo.DESCENDING).limit(limit))
+                videos = list(videos_collection.find({}, projection).sort("published_at", pymongo.DESCENDING).limit(limit))
                 logger.info(f"Found {len(videos)} global videos by date")
 
         # Format for frontend
