@@ -77,7 +77,6 @@ def get_feed(request: FeedRequest):
         # 5. Ultimate Fallback: Most Recent
         if not videos:
             logger.info("No videos found with viral_score. Falling back to sorting by published_at.")
-            # Ensure is_short filter is applied here too
             fallback_query = build_query({})
             videos = list(videos_collection.find(fallback_query, projection).sort("published_at", pymongo.DESCENDING).skip(skip).limit(limit))
 
