@@ -143,7 +143,8 @@ class YouTubeService:
             "like_count": int(item.get("statistics", {}).get("likeCount", 0)),
             "comment_count": int(item.get("statistics", {}).get("commentCount", 0)),
             "thumbnail_url": snippet["thumbnails"]["high"]["url"],
-            "is_short": "S" in item["contentDetails"]["duration"] and "M" not in item["contentDetails"]["duration"],
+            "is_short": "S" in item.get("contentDetails", {}).get("duration", "") and "M" not in item.get("contentDetails", {}).get("duration", ""),
+            "duration": item.get("contentDetails", {}).get("duration", "PT0S"),
             "created_at": datetime.datetime.utcnow()
         }
         video_data["viral_score"] = self.calculate_viral_score(video_data)
@@ -152,16 +153,16 @@ class YouTubeService:
 
     def calculate_viral_score(self, video_data):
         age_hours = max((datetime.datetime.utcnow() - video_data["published_at"]).total_seconds() / 3600, 0.1)
-        views_per_hour = video_data["view_count"] / age_hours
+        views_per_hour = video_data.get("view_count", 0) / age_hours
         engagement_ratio = 0
-        if video_data["view_count"] > 0:
-            engagement_ratio = (video_data["like_count"] + (video_data["comment_count"] * 2)) / video_data["view_count"]
+        if video_data.get("view_count", 0) > 0:
+            engagement_ratio = (video_data.get("like_count", 0) + (video_data.get("comment_count", 0) * 2)) / video_data["view_count"]
         
         score = views_per_hour * (1 + engagement_ratio * 10)
-        if video_data["is_short"]: score *= 1.5
+        if video_data.get("is_short", False): score *= 1.5
             
         state_lang_map = {"Maharashtra": "Marathi", "Tamil Nadu": "Tamil", "Andhra Pradesh": "Telugu", "Telangana": "Telugu", "Karnataka": "Kannada", "Kerala": "Malayalam", "West Bengal": "Bengali", "Gujarat": "Gujarati", "Punjab": "Punjabi"}
-        if video_data["state"] in state_lang_map and video_data["language"] == state_lang_map[video_data["state"]]:
+        if video_data.get("state") in state_lang_map and video_data.get("language") == state_lang_map[video_data["state"]]:
             score *= 1.2
             
         return score
