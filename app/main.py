@@ -84,45 +84,63 @@ def trigger_fetch_manual(background_tasks: BackgroundTasks):
     background_tasks.add_task(comprehensive_fetch_job)
     return {"status": "Comprehensive fetch job started in the background. Check server logs for progress."}
 
+# --- Updated Feed Logic ---
+@app.get("/feed")
+def get_feed(state: str = None, language: str = None, limit: int = 20):
+    """
+    Gets a personalized feed based on state and language.
+    Falls back to global if no personalization is provided or if no results found.
+    """
+    logger.info(f"Feed request: state={state}, language={language}")
+    
+    videos = []
+    
+    # 1. Try Personalized Query
+    if state or language:
+        query = {}
+        if state: query["state"] = state
+        if language: query["language"] = language
+        
+        logger.info(f"Executing personalized query: {query}")
+        videos = list(videos_collection.find(query).sort("viral_score", -1).limit(limit))
+        logger.info(f"Found {len(videos)} personalized videos")
+
+    # 2. Fallback to Global if empty
+    if not videos:
+        logger.info("Personalized feed empty or not requested. Falling back to global feed.")
+        videos = list(videos_collection.find({}).sort("viral_score", -1).limit(limit))
+        logger.info(f"Found {len(videos)} global videos")
+
+    # Format for frontend
+    formatted_videos = [_format_video(v) for v in videos]
+    return formatted_videos
+
+# Keep these for backward compatibility if needed, but /feed is the main one now
 @app.get("/feed/global")
 def get_global_viral(limit: int = 20):
-    return _get_feed("GLOBAL", limit=limit)
+    return get_feed(limit=limit)
 
 @app.get("/feed/state/{state}")
 def get_state_viral(state: str, limit: int = 20):
-    return _get_feed("STATE", state=state, limit=limit)
+    return get_feed(state=state, limit=limit)
 
 @app.get("/feed/language/{language}")
 def get_language_viral(language: str, limit: int = 20):
-    return _get_feed("LANGUAGE", language=language, limit=limit)
+    return get_feed(language=language, limit=limit)
 
 @app.get("/feed/state-language/{state}/{language}")
 def get_state_language_viral(state: str, language: str, limit: int = 20):
-    return _get_feed("STATE_LANGUAGE", state=state, language=language, limit=limit)
-
-def _get_feed(viral_type, state=None, language=None, limit=20):
-    query = {"viral_type": viral_type}
-    if state: query["state"] = state
-    if language: query["language"] = language
-        
-    cursor = viral_index_collection.find(query).sort("rank", 1).limit(limit)
-    
-    video_ids = [idx["video_id"] for idx in cursor]
-    videos = {v["video_id"]: v for v in videos_collection.find({"video_id": {"$in": video_ids}})}
-    
-    feed = []
-    for idx in cursor:
-        video = videos.get(idx["video_id"])
-        if video:
-            feed.append({
-                "rank": idx["rank"], "score": idx["score"], "viral_type": idx["viral_type"],
-                "video": _format_video(video)
-            })
-    return feed
+    return get_feed(state=state, language=language, limit=limit)
 
 def _format_video(video):
     return {
-        "id": video["video_id"], "title": video["title"], "thumbnail": video["thumbnail_url"],
-        "channel": video["channel_title"], "views": video["view_count"], "likes": video["like_count"],
-        "published_at": video["published_at"], "is_short": video["is_short"]
+        "id": video.get("video_id"),
+        "title": video.get("title"),
+        "thumbnail": video.get("thumbnail_url"),
+        "channel": video.get("channel_title"),
+        "views": video.get("view_count", 0),
+        "likes": video.get("like_count", 0),
+        "published_at": video.get("published_at"),
+        "is_short": video.get("is_short", False),
+        "duration": video.get("duration", "PT0S") # Ensure duration is passed if available
     }
