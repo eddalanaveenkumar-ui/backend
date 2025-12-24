@@ -14,7 +14,8 @@ class FeedRequest(BaseModel):
     state: Optional[str] = None
     language: Optional[str] = None
     limit: int = 20
-    skip: int = 0 # Add skip for pagination
+    skip: int = 0
+    is_short: Optional[bool] = None # New parameter
 
 def _format_video(video):
     return {
@@ -33,42 +34,52 @@ def _format_video(video):
 def get_feed(request: FeedRequest):
     """
     Gets a personalized feed with multi-level fallback and pagination.
+    Supports filtering by is_short (True for Shorts, False for Long Videos).
     """
     try:
         state = request.state
         language = request.language
         limit = request.limit
         skip = request.skip
+        is_short = request.is_short
         
-        logger.info(f"Feed request: state={state}, language={language}, skip={skip}")
+        logger.info(f"Feed request: state={state}, language={language}, skip={skip}, is_short={is_short}")
         
         videos = []
         projection = {"_id": 0}
         
+        # Helper to build query with is_short filter
+        def build_query(base_query):
+            if is_short is not None:
+                base_query["is_short"] = is_short
+            return base_query
+
         # Define a helper to run queries
         def run_query(query):
             return list(videos_collection.find(query, projection).sort("viral_score", pymongo.DESCENDING).skip(skip).limit(limit))
 
         # 1. Try State + Language
         if state and language:
-            videos = run_query({"state": state, "language": language})
+            videos = run_query(build_query({"state": state, "language": language}))
         
         # 2. Try Language Only
         if not videos and language:
-            videos = run_query({"language": language})
+            videos = run_query(build_query({"language": language}))
 
         # 3. Try State Only
         if not videos and state:
-            videos = run_query({"state": state})
+            videos = run_query(build_query({"state": state}))
 
         # 4. Fallback to Global Viral
         if not videos:
-            videos = run_query({})
+            videos = run_query(build_query({}))
 
         # 5. Ultimate Fallback: Most Recent
         if not videos:
             logger.info("No videos found with viral_score. Falling back to sorting by published_at.")
-            videos = list(videos_collection.find({}, projection).sort("published_at", pymongo.DESCENDING).skip(skip).limit(limit))
+            # Ensure is_short filter is applied here too
+            fallback_query = build_query({})
+            videos = list(videos_collection.find(fallback_query, projection).sort("published_at", pymongo.DESCENDING).skip(skip).limit(limit))
 
         logger.info(f"Returning {len(videos)} videos")
         
