@@ -63,6 +63,15 @@ def start_scheduler():
     if not scheduler.running:
         scheduler.start()
         logger.info("Scheduler started.")
+    
+    # --- DB Connection Check ---
+    try:
+        count = videos_collection.count_documents({})
+        logger.info(f"✅ DATABASE CHECK: Found {count} videos in 'videos' collection.")
+        if count == 0:
+            logger.warning("⚠️ DATABASE IS EMPTY! Please run the fetch job.")
+    except Exception as e:
+        logger.error(f"❌ DATABASE CONNECTION ERROR: {e}")
 
 @app.on_event("shutdown")
 def shutdown_scheduler():
