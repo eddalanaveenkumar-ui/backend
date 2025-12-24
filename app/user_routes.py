@@ -10,8 +10,9 @@ router = APIRouter()
 
 # --- Pydantic Models ---
 class UserProfile(BaseModel):
-    state: str
-    language: str
+    state: Optional[str] = None
+    language: Optional[str] = None
+    photo_url: Optional[str] = None
 
 class UserRegistration(BaseModel):
     username: str
@@ -82,10 +83,15 @@ def lookup_email_by_username(data: UsernameLookup):
 
 @router.post("/user/profile")
 def update_user_profile(profile: UserProfile, uid: str = Depends(get_current_user)):
-    """Creates or updates a user's profile with their state and language."""
+    """Creates or updates a user's profile with their state, language, and photo."""
+    update_data = {"last_updated": datetime.utcnow()}
+    if profile.state: update_data["state"] = profile.state
+    if profile.language: update_data["language"] = profile.language
+    if profile.photo_url: update_data["photo_url"] = profile.photo_url
+
     users_collection.update_one(
         {"uid": uid},
-        {"$set": {"state": profile.state, "language": profile.language, "last_updated": datetime.utcnow()}},
+        {"$set": update_data},
         upsert=True
     )
     return {"status": "Profile updated successfully"}
@@ -95,12 +101,12 @@ def get_user_profile(uid: str = Depends(get_current_user)):
     """Retrieves a user's profile to check for onboarding completion."""
     user_profile = users_collection.find_one({"uid": uid}, {"_id": 0})
     if user_profile:
-        # Return what we have, even if incomplete, so frontend can decide
         return {
             "username": user_profile.get("username"),
             "email": user_profile.get("email"),
             "state": user_profile.get("state"),
-            "language": user_profile.get("language")
+            "language": user_profile.get("language"),
+            "photo_url": user_profile.get("photo_url")
         }
     raise HTTPException(status_code=404, detail="User profile not found")
 
