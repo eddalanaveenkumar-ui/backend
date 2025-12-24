@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Body
 from pydantic import BaseModel
 from typing import Optional, Annotated
 from datetime import datetime
@@ -13,6 +13,10 @@ class UserProfile(BaseModel):
     state: str
     language: str
 
+class UserRegistration(BaseModel):
+    username: str
+    email: str
+
 class UserActivity(BaseModel):
     video_id: str
     event_type: str
@@ -21,6 +25,9 @@ class UserActivity(BaseModel):
 
 class UserFollow(BaseModel):
     channel_id: str
+
+class UsernameLookup(BaseModel):
+    username: str
 
 # --- Reusable Authentication Dependency ---
 def get_current_user(authorization: Annotated[str | None, Header()] = None):
@@ -39,6 +46,40 @@ def get_current_user(authorization: Annotated[str | None, Header()] = None):
 
 # --- User API Endpoints ---
 
+@router.post("/user/register")
+def register_user(data: UserRegistration, uid: str = Depends(get_current_user)):
+    """
+    Registers a new user with username and email.
+    Checks if username is already taken.
+    """
+    # Check if username exists (case insensitive)
+    existing_user = users_collection.find_one({"username": {"$regex": f"^{data.username}$", "$options": "i"}})
+    if existing_user and existing_user.get("uid") != uid:
+        raise HTTPException(status_code=400, detail="User ID already taken")
+
+    users_collection.update_one(
+        {"uid": uid},
+        {"$set": {
+            "username": data.username,
+            "email": data.email,
+            "created_at": datetime.utcnow(),
+            "last_updated": datetime.utcnow()
+        }},
+        upsert=True
+    )
+    return {"status": "User registered successfully"}
+
+@router.post("/user/lookup")
+def lookup_email_by_username(data: UsernameLookup):
+    """
+    Looks up an email address by username (User ID).
+    Used for login when user enters a username instead of email.
+    """
+    user = users_collection.find_one({"username": {"$regex": f"^{data.username}$", "$options": "i"}})
+    if user and "email" in user:
+        return {"email": user["email"]}
+    raise HTTPException(status_code=404, detail="User ID not found")
+
 @router.post("/user/profile")
 def update_user_profile(profile: UserProfile, uid: str = Depends(get_current_user)):
     """Creates or updates a user's profile with their state and language."""
@@ -53,12 +94,15 @@ def update_user_profile(profile: UserProfile, uid: str = Depends(get_current_use
 def get_user_profile(uid: str = Depends(get_current_user)):
     """Retrieves a user's profile to check for onboarding completion."""
     user_profile = users_collection.find_one({"uid": uid}, {"_id": 0})
-    if user_profile and user_profile.get("state") and user_profile.get("language"):
+    if user_profile:
+        # Return what we have, even if incomplete, so frontend can decide
         return {
+            "username": user_profile.get("username"),
+            "email": user_profile.get("email"),
             "state": user_profile.get("state"),
             "language": user_profile.get("language")
         }
-    raise HTTPException(status_code=404, detail="User profile not found or incomplete.")
+    raise HTTPException(status_code=404, detail="User profile not found")
 
 @router.post("/user/activity")
 def log_user_activity(activity: UserActivity, uid: str = Depends(get_current_user)):
