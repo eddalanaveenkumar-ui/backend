@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional, Annotated, List
 from datetime import datetime
 
-from .database import users_collection, user_activity_collection, user_follows_collection
+from .database import users_collection, user_activity_collection, user_follows_collection, videos_collection
 from .firebase_config import verify_token
 
 router = APIRouter()
@@ -129,5 +129,28 @@ def get_user_profile(uid: str = Depends(get_current_user)):
             "bio": user_profile.get("bio")
         }
     raise HTTPException(status_code=404, detail="User profile not found")
+
+# --- Feed Endpoint ---
+@router.get("/feed")
+def get_feed(state: Optional[str] = None, language: Optional[str] = None, limit: int = 20):
+    """
+    Gets a personalized feed based on state and language.
+    Falls back to global if no personalization is provided.
+    """
+    query = {}
+    if state and language:
+        query = {"state": state, "language": language}
+    elif state:
+        query = {"state": state}
+    elif language:
+        query = {"language": language}
+
+    videos = list(videos_collection.find(query).sort("viral_score", -1).limit(limit))
+    
+    # If personalized feed is empty, fall back to global
+    if not videos:
+        videos = list(videos_collection.find({}).sort("viral_score", -1).limit(limit))
+
+    return videos
 
 # ... (rest of the file is unchanged) ...
