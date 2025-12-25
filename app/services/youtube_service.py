@@ -113,6 +113,13 @@ class YouTubeService:
 
         duration_iso = item.get("contentDetails", {}).get("duration", "PT0S")
         duration_seconds = isodate.parse_duration(duration_iso).total_seconds()
+        
+        thumbnail_details = snippet.get("thumbnails", {}).get("high", {})
+        width = thumbnail_details.get("width", 0)
+        height = thumbnail_details.get("height", 0)
+        aspect_ratio = width / height if height > 0 else 0
+
+        is_short = duration_seconds <= 60 or aspect_ratio < 1
 
         video_data = {
             "video_id": video_id, "title": snippet["title"], "description": snippet["description"],
@@ -122,15 +129,16 @@ class YouTubeService:
             "view_count": int(item.get("statistics", {}).get("viewCount", 0)),
             "like_count": int(item.get("statistics", {}).get("likeCount", 0)),
             "comment_count": int(item.get("statistics", {}).get("commentCount", 0)),
-            "thumbnail_url": snippet["thumbnails"]["high"]["url"],
-            "is_short": duration_seconds <= 60,
+            "thumbnail_url": thumbnail_details.get("url"),
+            "is_short": is_short,
             "duration": duration_iso,
             "duration_in_seconds": duration_seconds,
+            "width": width,
+            "height": height,
             "created_at": datetime.datetime.utcnow()
         }
         video_data["viral_score"] = self.calculate_viral_score(video_data)
         
-        # Use update_one with upsert=True to prevent duplicates
         videos_collection.update_one(
             {"video_id": video_id},
             {"$set": video_data},

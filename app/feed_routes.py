@@ -32,7 +32,11 @@ def _format_video(video):
 
 @router.post("/feed")
 def get_feed(request: FeedRequest):
-    # ... (code is unchanged)
+    """
+    Gets a personalized feed.
+    - If is_short is True/False, it filters.
+    - If is_short is None, it returns a mixed feed.
+    """
     try:
         state = request.state
         language = request.language
@@ -46,6 +50,7 @@ def get_feed(request: FeedRequest):
         projection = {"_id": 0}
         
         def build_query(base_query):
+            # Only add the is_short filter if it's explicitly provided
             if is_short is not None:
                 base_query["is_short"] = is_short
             return base_query
@@ -53,6 +58,7 @@ def get_feed(request: FeedRequest):
         def run_query(query):
             return list(videos_collection.find(query, projection).sort("viral_score", pymongo.DESCENDING).skip(skip).limit(limit))
 
+        # Build queries and run them
         if state and language:
             videos = run_query(build_query({"state": state, "language": language}))
         
@@ -82,9 +88,6 @@ def get_feed(request: FeedRequest):
 
 @router.get("/video/{video_id}")
 def get_video_details(video_id: str):
-    """
-    Gets details for a single video from the database.
-    """
     logger.info(f"Fetching details for video_id: {video_id}")
     projection = {"_id": 0}
     video = videos_collection.find_one({"video_id": video_id}, projection)
