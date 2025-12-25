@@ -130,7 +130,12 @@ class YouTubeService:
         }
         video_data["viral_score"] = self.calculate_viral_score(video_data)
         
-        videos_collection.update_one({"video_id": video_id}, {"$set": video_data}, upsert=True)
+        # Use update_one with upsert=True to prevent duplicates
+        videos_collection.update_one(
+            {"video_id": video_id},
+            {"$set": video_data},
+            upsert=True
+        )
 
     def calculate_viral_score(self, video_data):
         # ... (code is unchanged)
